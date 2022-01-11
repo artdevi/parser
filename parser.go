@@ -19,6 +19,14 @@ const DB_HOST string = "localhost"
 const DB_PORT int = 5432
 const DB_NAME string = "testdb"
 
+// 	Значение LOGS_MODE позволяет управлять выводом логов.
+//	0 - на экран выводится количество собранных фраз
+// 	1 - на экран выводится сообщение с последней собранной фразой
+//  2 - на экран выводится вся собранная информация
+const LOGS_MODE = 1
+
+var count = 0
+
 func startParsing(conn *pgxpool.Pool, url string) {
 	collectors := createCollectors()
 	setupCollectors(collectors, conn)
@@ -59,8 +67,16 @@ func setupCollectors(collectors []colly.Collector, conn *pgxpool.Pool) {
 
 	collectors[0].OnHTML(".entry-body__el", func(e *colly.HTMLElement) {
 		parseEntry(conn, e)
-		fmt.Println("----------------------------------------")
+		printSeparator()
 	})
+}
+
+func parseEntry(conn *pgxpool.Pool, e *colly.HTMLElement) {
+	title, pos, pron_uk, pron_us := collectHeaderData(e)
+	printHeaderData(title, pos, pron_uk, pron_us)
+	word_id := insertHeaderData(conn, title, pos, pron_uk, pron_us)
+	parseDefinitionBody(conn, e, word_id)
+	count++
 }
 
 func collectHeaderData(e *colly.HTMLElement) (string, string, string, string) {
@@ -83,13 +99,6 @@ func insertHeaderData(conn *pgxpool.Pool, title string, pos string, pron_uk stri
 	return id
 }
 
-func parseEntry(conn *pgxpool.Pool, e *colly.HTMLElement) {
-	title, pos, pron_uk, pron_us := collectHeaderData(e)
-	printHeaderData(title, pos, pron_uk, pron_us)
-	word_id := insertHeaderData(conn, title, pos, pron_uk, pron_us)
-	parseDefinitionBody(conn, e, word_id)
-}
-
 func parseDefinitionBody(conn *pgxpool.Pool, e *colly.HTMLElement, word_id uint64) {
 	//	Данная функция выводит на экран собранные определения и примеры, а также загружает их в БД.
 	//	Можно было разделить эти задачи на две функции, но в таком случае пришлось бы сохранять определения и примеры в отдельные слайсы,
@@ -100,12 +109,12 @@ func parseDefinitionBody(conn *pgxpool.Pool, e *colly.HTMLElement, word_id uint6
 	e.ForEach("div.sense-body > div.ddef_block", func(_ int, s *colly.HTMLElement) {
 		def := collectDefinition(s)
 		def_id := insertDefinition(conn, word_id, def)
-		fmt.Println("Definition: ", def)
+		printDefinition(def)
 
 		s.ForEach("div.dexamp", func(_ int, ds *colly.HTMLElement) {
 			examp := collectExample(ds)
 			insertExample(conn, def_id, examp)
-			fmt.Println("			 • ", examp)
+			printExample(examp)
 		})
 	})
 }
@@ -140,10 +149,37 @@ func insertExample(conn *pgxpool.Pool, def_id uint64, example string) {
 }
 
 func printHeaderData(title string, pos string, pron_uk string, pron_us string) {
-	fmt.Println("Title: ", title)
-	fmt.Println("Part of speech: ", pos)
-	fmt.Println("Pronunciation UK: ", pron_uk)
-	fmt.Println("Pronunciation US: ", pron_us)
+	switch LOGS_MODE {
+	case 0:
+		fmt.Fprintf(os.Stdout, "Count of collected words: %d\n", count)
+	case 1:
+		fmt.Fprintf(os.Stdout, "Count of collected words: %d		# ", count)
+		fmt.Fprintf(os.Stdout, "Parsed: %s\n", title)
+	case 2:
+		fmt.Fprintf(os.Stdout, "Count of collected words: %d\n", count)
+		fmt.Fprintf(os.Stdout, "Title: %s\n", title)
+		fmt.Fprintf(os.Stdout, "Part of speech: %s\n", pos)
+		fmt.Fprintf(os.Stdout, "Pronunciation UK: %s\n", pron_uk)
+		fmt.Fprintf(os.Stdout, "Pronunciation US: %s\n", pron_us)
+	}
+}
+
+func printDefinition(def string) {
+	if LOGS_MODE == 2 {
+		fmt.Fprintf(os.Stdout, "Definition: %s\n", def)
+	}
+}
+
+func printExample(examp string) {
+	if LOGS_MODE == 2 {
+		fmt.Fprintf(os.Stdout, "			 • %s\n", examp)
+	}
+}
+
+func printSeparator() {
+	if LOGS_MODE == 2 {
+		fmt.Fprintf(os.Stdout, "----------------------------------------\n")
+	}
 }
 
 func formatSentence(s string) string {
