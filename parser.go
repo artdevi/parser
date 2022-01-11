@@ -23,6 +23,7 @@ const DB_NAME string = "testdb"
 //	0 - на экран выводится количество собранных фраз
 // 	1 - на экран выводится сообщение с последней собранной фразой
 //  2 - на экран выводится вся собранная информация
+
 const LOGS_MODE = 1
 
 var count = 0
@@ -73,10 +74,10 @@ func setupCollectors(collectors []colly.Collector, conn *pgxpool.Pool) {
 
 func parseEntry(conn *pgxpool.Pool, e *colly.HTMLElement) {
 	title, pos, pron_uk, pron_us := collectHeaderData(e)
+	count++
 	printHeaderData(title, pos, pron_uk, pron_us)
 	word_id := insertHeaderData(conn, title, pos, pron_uk, pron_us)
 	parseDefinitionBody(conn, e, word_id)
-	count++
 }
 
 func collectHeaderData(e *colly.HTMLElement) (string, string, string, string) {
@@ -154,7 +155,7 @@ func printHeaderData(title string, pos string, pron_uk string, pron_us string) {
 		fmt.Fprintf(os.Stdout, "Count of collected words: %d\n", count)
 	case 1:
 		fmt.Fprintf(os.Stdout, "Count of collected words: %d		# ", count)
-		fmt.Fprintf(os.Stdout, "Parsed: %s\n", title)
+		fmt.Fprintf(os.Stdout, "Collected: %s\n", title)
 	case 2:
 		fmt.Fprintf(os.Stdout, "Count of collected words: %d\n", count)
 		fmt.Fprintf(os.Stdout, "Title: %s\n", title)
@@ -182,6 +183,11 @@ func printSeparator() {
 	}
 }
 
+func printFinalMessage() {
+	fmt.Fprintf(os.Stdout, "All words are collected!\n")
+	fmt.Fprintf(os.Stdout, "Count of collected words: %d\n", count)
+}
+
 func formatSentence(s string) string {
 	s = strings.Replace(s, "→", "", 1)
 	s = strings.TrimSpace(s)
@@ -205,4 +211,5 @@ func main() {
 	}
 
 	startParsing(conn, START_URL)
+	printFinalMessage()
 }
